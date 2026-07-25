@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Màn hình LED — Hội nghị tiếp xúc cử tri</title>
+<script src="config.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+/* =====================================================================
+   1 tệp duy nhất — dùng laptop nối HDMI ra màn hình LED:
+   - Cửa sổ này (mặc định): BẢNG ĐIỀU KHIỂN, chỉ hiện trên màn hình laptop.
+   - Bấm "Mở màn hình LED" → mở cửa sổ mới (?led=1), kéo cửa sổ đó sang
+     màn hình LED (qua HDMI) rồi bấm nút "Bắt đầu chiếu" để vào toàn màn hình.
+   - Hai cửa sổ tự đồng bộ theo thời gian thực qua localStorage + BroadcastChannel.
+===================================================================== */
+:root{
+    --navy-950:#071A3D; --navy-900:#0E2C6B; --navy-800:#154089;
+    --teal:#00ACC1;
+    --gold:#E7BE6B; --gold-soft:#F6E4B8; --gold-deep:#B98A34; --gold-bg:#FBF3E1;
+    --crimson:#D14134;
+    --ink:#F7F5EF; --mist:rgba(247,245,239,0.62); --hair:rgba(231,190,107,0.28);
+    --bg:#F2EFE6; --panel:#FFFFFF; --text:#1B2333; --text2:#6B7484; --border:#E4DECB;
+    --radius-lg:18px; --radius-md:12px; --shadow:0 10px 30px rgba(20,20,10,0.08);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{font-family:'Be Vietnam Pro', sans-serif; color:var(--text); background:var(--bg);}
+#controlView, #ledView{ display:none; }
+body.mode-control #controlView{ display:block; }
+body.mode-led #ledView{ display:block; }
+
+/* =====================================================================
+   BẢNG ĐIỀU KHIỂN (chỉ hiển thị trên laptop)
+===================================================================== */
+header.ctl-header{
+    background:linear-gradient(120deg, var(--navy-950), var(--navy-900) 55%, var(--navy-800));
+    padding:16px 22px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    box-shadow:0 4px 18px rgba(0,0,0,0.18);
+}
+.head-title{ flex:1; min-width:180px; }
+.head-title h1{ color:#F7F5EF; font-size:1.15rem; font-weight:800; letter-spacing:-.2px; display:flex; align-items:center; gap:9px; }
+.head-title p{ color:rgba(247,245,239,0.55); font-size:.75rem; font-weight:500; margin-top:2px; }
+.head-clock{
+    text-align:right; color:#F7F5EF; padding-right:6px; border-right:1px solid rgba(255,255,255,0.14);
+}
+.head-clock .hc-time{ font-size:1.05rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.head-clock .hc-date{ font-size:.68rem; color:rgba(247,245,239,0.55); font-weight:600; }
+.status-pill{
+    display:flex; align-items:center; gap:7px;
+    background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14);
+    border-radius:30px; padding:7px 14px; font-size:.75rem; font-weight:600; color:#F7F5EF;
+}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#8BC34A;}
+.status-dot.err{background:var(--crimson);}
+.btn-open-led{
+    display:flex; align-items:center; gap:8px;
+    background:linear-gradient(135deg,#E7BE6B,#B98A34); color:#231705;
+    border:none; border-radius:30px; padding:9px 18px; font-weight:700; font-size:.8rem;
+    cursor:pointer; font-family:inherit;
+}
+
+.wrap{ max-width:1500px; margin:0 auto; padding:20px; display:grid; grid-template-columns:1.35fr 1fr; gap:20px; align-items:start; }
+@media (max-width:980px){ .wrap{ grid-template-columns:1fr; } }
+.panel{ background:var(--panel); border-radius:var(--radius-lg); box-shadow:var(--shadow); border:1px solid var(--border); padding:18px 18px 20px; }
+.panel h2{ font-size:.82rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--gold-deep); margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+
+.next-btn{
+    width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:linear-gradient(135deg, var(--navy-900), var(--navy-950)); color:#F7F5EF; border:none;
+    border-radius:var(--radius-md); padding:16px 20px; cursor:pointer; font-family:inherit; margin-bottom:16px;
+    box-shadow:0 6px 16px rgba(10,23,48,0.25);
+}
+.next-btn:active{ transform:scale(0.99); }
+.next-btn:disabled{ opacity:.45; cursor:not-allowed; }
+.next-btn .nb-left{ display:flex; align-items:center; gap:12px; text-align:left; }
+.next-btn .nb-icon{ width:40px; height:40px; border-radius:50%; border:1.5px solid #E7BE6B; color:#E7BE6B; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex:none; }
+.next-btn .nb-title{ font-weight:800; font-size:.95rem; }
+.next-btn .nb-sub{ font-size:.76rem; color:rgba(247,245,239,0.6); margin-top:2px; }
+
+.list-scroll{ max-height:480px; overflow-y:auto; padding-right:2px; }
+.row-item{ display:flex; align-items:center; gap:12px; padding:12px 10px; border-radius:var(--radius-md); border:1.5px solid var(--border); margin-bottom:9px; cursor:pointer; transition:.15s; }
+.row-item:hover{ border-color:#D9C99A; background:#FBF8F1; }
+.row-item.is-current{ border-color:var(--gold); background:var(--gold-bg); }
+.row-badge{ flex:none; width:34px; height:34px; border-radius:50%; border:1.5px solid var(--gold-deep); color:var(--gold-deep); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:.85rem; }
+.row-item.is-current .row-badge{ background:var(--gold-deep); color:#fff; }
+.row-main{ flex:1; min-width:0; }
+.row-name{ font-weight:700; font-size:.92rem; }
+.row-unit{ font-size:.76rem; color:var(--text2); margin-top:1px; }
+.row-tag{ flex:none; font-size:.68rem; font-weight:700; padding:4px 10px; border-radius:20px; background:var(--gold-deep); color:#fff; }
+.empty-state{ text-align:center; color:var(--text2); padding:30px 10px; font-size:.85rem; }
+.empty-state i{ font-size:1.6rem; color:var(--border); display:block; margin-bottom:8px; }
+
+.preview-frame{
+    aspect-ratio:16/9; width:100%; border-radius:12px; overflow:hidden; position:relative;
+    background:radial-gradient(ellipse 65% 55% at 88% 4%, rgba(231,190,107,0.16), transparent 62%),
+               radial-gradient(ellipse 60% 50% at 4% 100%, rgba(0,172,193,0.22), transparent 62%),
+               linear-gradient(155deg, #071A3D 0%, #0E2C6B 48%, #154089 78%, #1565C0 130%);
+    display:grid; grid-template-columns:67% 33%; grid-template-rows:79% 21%; border:1px solid #1c3a72;
+    container-type:inline-size;
+}
+.pv-zone1{ grid-column:1; grid-row:1; padding:3% 4%; overflow:hidden; border-right:1px solid rgba(231,190,107,0.25); border-bottom:1px solid rgba(231,190,107,0.25); }
+.pv-eyebrow{ display:flex; align-items:center; gap:5px; color:#E7BE6B; font-weight:800; letter-spacing:.16em; text-transform:uppercase; font-size:.6rem; margin-bottom:6%; }
+.pv-dot{ width:6px; height:6px; border-radius:50%; background:#D14134; }
+.pv-name{ color:#F7F5EF; font-weight:900; margin-bottom:2%; line-height:1.2; }
+.pv-unit{ color:#F6E4B8; font-weight:600; margin-bottom:6%; }
+.pv-lines{ color:#F7F5EF; line-height:1.5; }
+.pv-line{ display:flex; gap:5px; margin-bottom:3px; }
+.pv-line span.b{ color:#E7BE6B; }
+.pv-waiting{ color:rgba(247,245,239,0.55); }
+.pv-zone2{ grid-column:1; grid-row:2; display:flex; align-items:center; gap:8px; padding:0 4%; background:linear-gradient(90deg, rgba(231,190,107,0.10), rgba(231,190,107,0.03)); border-right:1px solid rgba(231,190,107,0.25); color:#F7F5EF; font-weight:700; }
+.pv-zone2 i{ color:#E7BE6B; }
+.pv-zone2 b{ color:#F6E4B8; }
+.pv-zone3{ grid-column:2; grid-row:1/span 2; padding:3% 3%; overflow:hidden; }
+.pv-z3head{ color:#E7BE6B; font-weight:800; text-transform:uppercase; letter-spacing:.1em; font-size:.58rem; border-bottom:1px solid rgba(231,190,107,0.25); padding-bottom:6%; margin-bottom:6%; display:flex; justify-content:space-between; }
+.pv-z3row{ display:flex; align-items:center; gap:5px; margin-bottom:5%; }
+.pv-z3badge{ flex:none; width:16px; height:16px; border-radius:50%; border:1px solid #E7BE6B; color:#E7BE6B; display:flex; align-items:center; justify-content:center; font-size:.5rem; font-weight:800; }
+.pv-z3row.cur .pv-z3badge{ background:#E7BE6B; color:#0A1730; }
+.pv-z3name{ color:#F7F5EF; font-weight:700; }
+.pv-z3unit{ color:rgba(247,245,239,0.55); }
+.pv-note{ font-size:.72rem; color:var(--text2); margin-top:10px; display:flex; align-items:center; gap:6px; }
+
+.font-row{ margin-bottom:18px; }
+.font-row:last-child{ margin-bottom:0; }
+.font-row-label{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.font-row-label span.name{ font-size:.82rem; font-weight:700; }
+.font-row-label span.val{ font-size:.72rem; color:var(--text2); font-weight:600; }
+.slider-track{ display:flex; align-items:center; gap:10px; }
+.slider-track i{ color:var(--text2); }
+.slider-track i.small{ font-size:.7rem; }
+.slider-track i.big{ font-size:1.05rem; }
+input[type=range]{ flex:1; -webkit-appearance:none; height:6px; border-radius:6px; background:linear-gradient(90deg, var(--border), var(--gold-deep)); outline:none; }
+input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:#fff; border:3px solid var(--gold-deep); cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+.btn-reset{ margin-top:16px; width:100%; padding:10px; border-radius:30px; border:1.5px solid var(--border); background:transparent; color:var(--text2); font-weight:700; font-size:.78rem; cursor:pointer; font-family:inherit; }
+.btn-reset:hover{ border-color:var(--gold-deep); color:var(--gold-deep); }
+
+.toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); background:var(--navy-950); color:#F7F5EF; padding:11px 20px; border-radius:30px; font-size:.82rem; font-weight:600; opacity:0; transition:.25s; pointer-events:none; z-index:200; box-shadow:0 8px 24px rgba(0,0,0,0.25); }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* =====================================================================
+   MÀN HÌNH LED (cửa sổ chiếu qua HDMI)
+===================================================================== */
+#ledView{ height:100%; }
+.stage-wrap{
+    width:100vw; height:100vh; position:relative; overflow:hidden;
+    background:radial-gradient(ellipse 65% 55% at 88% 4%, rgba(231,190,107,0.16), transparent 62%),
+               radial-gradient(ellipse 60% 50% at 4% 100%, rgba(0,172,193,0.22), transparent 62%),
+               linear-gradient(155deg, var(--navy-950) 0%, var(--navy-900) 48%, var(--navy-800) 78%, #1565C0 130%);
+    color:var(--ink);
+}
+.stage{ display:grid; grid-template-columns:67% 33%; grid-template-rows:79% 21%; width:100%; height:100%; }
+
+.zone1{ grid-column:1; grid-row:1; padding:2.6vh 3vw 2vh 3.2vw; display:flex; flex-direction:column; min-height:0; border-right:1px solid var(--hair); border-bottom:1px solid var(--hair); }
+.z1-eyebrow{ display:flex; align-items:center; gap:.9vw; margin-bottom:1.6vh; }
+.live-dot{ width:.9vw; height:.9vw; min-width:10px; min-height:10px; border-radius:50%; background:var(--crimson); animation:pulse 1.6s infinite; }
+@keyframes pulse{ 0%{box-shadow:0 0 0 0 rgba(209,65,52,0.55);} 70%{box-shadow:0 0 0 14px rgba(209,65,52,0);} 100%{box-shadow:0 0 0 0 rgba(209,65,52,0);} }
+.z1-eyebrow span{ font-weight:800; letter-spacing:.28em; text-transform:uppercase; color:var(--gold); font-size:1.15vw; }
+.z1-speaker{ display:flex; align-items:baseline; flex-wrap:wrap; gap:0 1.1vw; padding-bottom:1.6vh; margin-bottom:1.8vh; border-bottom:1px solid var(--hair); }
+.z1-name{ font-weight:900; font-size:2.9vw; letter-spacing:-.01em; color:var(--ink); }
+.z1-unit{ font-weight:600; font-size:1.35vw; color:var(--gold-soft); display:flex; align-items:center; gap:.5vw; }
+.z1-body{ flex:1; min-height:0; position:relative; overflow:hidden; }
+.z1-scroll{ height:100%; overflow-y:auto; scrollbar-width:none; padding-right:.5vw; }
+.z1-scroll::-webkit-scrollbar{ display:none; }
+.z1-line{ display:flex; gap:.9vw; align-items:flex-start; font-weight:500; line-height:1.5; color:var(--ink); padding:.55vh 0; }
+.z1-line .bullet{ color:var(--gold); flex:none; margin-top:.15em; }
+.z1-waiting{ height:100%; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:1vh; color:var(--mist); }
+.z1-waiting .big{ font-size:1.8vw; font-weight:700; color:var(--gold-soft); }
+.fade-bottom{ position:absolute; left:0; right:0; bottom:0; height:6vh; pointer-events:none; background:linear-gradient(transparent, rgba(10,23,48,0.9)); display:none; }
+
+.zone2{ grid-column:1; grid-row:2; display:flex; align-items:center; gap:1.6vw; padding:0 3.2vw; background:linear-gradient(90deg, rgba(231,190,107,0.10), rgba(231,190,107,0.03)); border-right:1px solid var(--hair); }
+.z2-icon{ width:3.4vw; height:3.4vw; min-width:38px; min-height:38px; border-radius:50%; border:1.5px solid var(--gold); display:flex; align-items:center; justify-content:center; color:var(--gold); font-size:1.3vw; flex:none; animation:nudge 1.8s ease-in-out infinite; }
+@keyframes nudge{ 0%,100%{transform:translateX(0);} 50%{transform:translateX(6px);} }
+.z2-text{ font-weight:700; line-height:1.35; color:var(--ink); }
+.z2-text b{ color:var(--gold-soft); font-weight:800; }
+.z2-empty{ color:var(--mist); font-weight:600; }
+
+.zone3{ grid-column:2; grid-row:1 / span 2; display:flex; flex-direction:column; min-height:0; padding:2.6vh 1.7vw 2.4vh; background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent 12%); position:relative; }
+.z3-head{ display:flex; align-items:center; justify-content:space-between; padding-bottom:1.6vh; margin-bottom:1.4vh; border-bottom:1px solid var(--hair); font-weight:800; letter-spacing:.14em; text-transform:uppercase; font-size:1.05vw; color:var(--gold); }
+.z3-count{ font-family:inherit; font-weight:800; font-size:.95vw; background:rgba(231,190,107,0.14); color:var(--gold-soft); border:1px solid var(--hair); border-radius:30px; padding:.3vh 1vw; letter-spacing:0; }
+.z3-viewport{ flex:1; min-height:0; overflow:hidden; position:relative; }
+.z3-track{ display:flex; flex-direction:column; will-change:transform; }
+.z3-row{ display:flex; align-items:center; gap:.9vw; padding:1.15vh .3vw; }
+.z3-badge{ flex:none; width:2.4vw; height:2.4vw; min-width:26px; min-height:26px; border-radius:50%; border:1.5px solid var(--gold); display:flex; align-items:center; justify-content:center; font-weight:800; color:var(--gold); font-size:.95vw; }
+.z3-row.is-current .z3-badge{ background:var(--gold); color:var(--navy-950); }
+.z3-row.is-current{ background:rgba(231,190,107,0.08); border-radius:12px; }
+.z3-info{ min-width:0; }
+.z3-name{ font-weight:800; color:var(--ink); font-size:1em; }
+.z3-unit{ color:var(--mist); font-weight:500; font-size:.86em; display:flex; align-items:center; gap:.4em; margin-top:.15em; }
+.z3-divider{ display:flex; align-items:center; justify-content:center; gap:.7vw; padding:1.6vh 0; color:var(--gold); opacity:.55; font-size:.85vw; }
+.z3-empty{ color:var(--mist); font-weight:600; padding-top:2vh; }
+
+/* Đồng hồ nổi góc trên phải màn hình LED */
+.led-clock{
+    position:absolute; top:1.6vh; right:1.9vw; z-index:5; text-align:right;
+    background:rgba(6,11,24,0.42); border:1px solid var(--hair); border-radius:14px;
+    padding:.8vh 1.1vw; backdrop-filter:blur(3px);
+}
+.led-clock .lc-time{ font-weight:800; font-size:1.05vw; color:var(--ink); font-variant-numeric:tabular-nums; letter-spacing:.02em; }
+.led-clock .lc-date{ font-weight:600; font-size:.68vw; color:var(--gold-soft); margin-top:.1vh; text-transform:capitalize; }
+
+/* Cổng bắt đầu chiếu — cần 1 lần bấm để trình duyệt cho phép toàn màn hình */
+.start-gate{
+    position:fixed; inset:0; z-index:100; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    background:linear-gradient(160deg, var(--navy-950), var(--navy-900) 55%, var(--navy-800));
+}
+.start-gate h2{ color:var(--ink); font-size:1.3rem; font-weight:800; }
+.start-gate p{ color:var(--mist); font-size:.85rem; max-width:420px; text-align:center; }
+.start-gate button{
+    display:flex; align-items:center; gap:10px;
+    background:linear-gradient(135deg,#E7BE6B,#B98A34); color:#231705; border:none;
+    border-radius:30px; padding:14px 26px; font-weight:800; font-size:.95rem; cursor:pointer; font-family:inherit;
+}
+.start-gate.hide{ display:none; }
+
+.fs-btn{
+    position:fixed; right:18px; bottom:16px; z-index:50;
+    background:rgba(6,11,24,0.55); border:1px solid var(--hair); color:var(--gold-soft);
+    border-radius:30px; padding:9px 16px; font-family:inherit; font-size:13px; font-weight:600;
+    display:flex; align-items:center; gap:8px; cursor:pointer; opacity:0; transition:opacity .3s;
+}
+body.show-fs .fs-btn{ opacity:1; }
+</style>
+</head>
+<body>
+
+<!-- ===================== BẢNG ĐIỀU KHIỂN ===================== -->
+<div id="controlView">
+    <header class="ctl-header">
+        <div class="head-title">
+            <h1><i class="fas fa-tv"></i>&ensp;Bảng điều khiển màn hình LED</h1>
+            <p>Hội nghị tiếp xúc cử tri</p>
+        </div>
+        <div class="head-clock"><div class="hc-time" id="hcTime">--:--:--</div><div class="hc-date" id="hcDate">—</div></div>
+        <div class="status-pill"><span class="status-dot" id="statusDot"></span><span id="statusText">Đang kết nối…</span></div>
+        <button class="btn-open-led" id="openLedBtn"><i class="fas fa-external-link-alt"></i> Mở màn hình LED</button>
+    </header>
+
+    <div class="wrap">
+        <div class="panel">
+            <h2><i class="fas fa-microphone-lines"></i> Chọn ý kiến phát biểu</h2>
+            <button class="next-btn" id="nextBtn" disabled>
+                <div class="nb-left">
+                    <div class="nb-icon"><i class="fas fa-forward-step"></i></div>
+                    <div><div class="nb-title">Ý kiến tiếp theo</div><div class="nb-sub" id="nextBtnSub">Đang tải danh sách…</div></div>
+                </div>
+                <i class="fas fa-chevron-right" style="color:#E7BE6B"></i>
+            </button>
+            <div id="listBox" class="list-scroll">
+                <div class="empty-state"><i class="fas fa-spinner fa-pulse"></i>Đang tải danh sách ý kiến đã duyệt…</div>
+            </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:20px;">
+            <div class="panel">
+                <h2><i class="fas fa-desktop"></i> Xem trước màn hình LED</h2>
+                <div class="preview-frame" id="previewFrame"></div>
+                <div class="pv-note"><i class="fas fa-circle-dot" style="color:#8BC34A"></i> Chỉ hiện trên laptop — màn hình LED chỉ chiếu nội dung, không có bảng điều khiển.</div>
+            </div>
+            <div class="panel">
+                <h2><i class="fas fa-text-height"></i> Cỡ chữ hiển thị</h2>
+                <div class="font-row"><div class="font-row-label"><span class="name">Vùng 1 — Đang phát biểu</span><span class="val" id="fz1val"></span></div><div class="slider-track"><i class="fas fa-font small"></i><input type="range" min="0" max="10" step="1" id="fz1"><i class="fas fa-font big"></i></div></div>
+                <div class="font-row"><div class="font-row-label"><span class="name">Vùng 2 — Tiếp theo</span><span class="val" id="fz2val"></span></div><div class="slider-track"><i class="fas fa-font small"></i><input type="range" min="0" max="10" step="1" id="fz2"><i class="fas fa-font big"></i></div></div>
+                <div class="font-row"><div class="font-row-label"><span class="name">Vùng 3 — Danh sách đã duyệt</span><span class="val" id="fz3val"></span></div><div class="slider-track"><i class="fas fa-font small"></i><input type="range" min="0" max="10" step="1" id="fz3"><i class="fas fa-font big"></i></div></div>
+                <button class="btn-reset" id="resetFontBtn"><i class="fas fa-rotate-left"></i>&ensp;Khôi phục cỡ chữ mặc định</button>
+            </div>
+        </div>
+    </div>
+    <div class="toast" id="toast"></div>
+</div>
+
+<!-- ===================== MÀN HÌNH LED ===================== -->
+<div id="ledView">
+    <div class="start-gate" id="startGate">
+        <h2><i class="fas fa-tv"></i>&ensp;Màn hình LED — Hội nghị tiếp xúc cử tri</h2>
+        <p>Kéo cửa sổ này sang màn hình LED nối qua HDMI, sau đó bấm nút bên dưới để chiếu toàn màn hình.</p>
+        <button id="startFsBtn"><i class="fas fa-expand"></i> Bắt đầu chiếu</button>
+    </div>
+
+    <div class="stage-wrap">
+        <div class="led-clock"><div class="lc-time" id="lcTime">--:--:--</div><div class="lc-date" id="lcDate">—</div></div>
+        <div class="stage">
+            <section class="zone1">
+                <div class="z1-eyebrow"><span class="live-dot"></span><span>Đang phát biểu</span></div>
+                <div id="z1Speaker" class="z1-speaker" style="display:none;">
+                    <span id="z1Name" class="z1-name"></span><span id="z1Unit" class="z1-unit"></span>
+                </div>
+                <div class="z1-body"><div id="z1Scroll" class="z1-scroll"></div><div class="fade-bottom" id="z1Fade"></div></div>
+            </section>
+            <section class="zone2">
+                <div class="z2-icon"><i class="fas fa-arrow-right"></i></div>
+                <div id="z2Text" class="z2-text">Đang tải danh sách…</div>
+            </section>
+            <section class="zone3">
+                <div class="z3-head"><span><i class="fas fa-list-check"></i>&ensp;Ý kiến đã duyệt</span><span id="z3Count" class="z3-count">0</span></div>
+                <div class="z3-viewport"><div id="z3Track" class="z3-track"></div></div>
+            </section>
+        </div>
+    </div>
+    <button class="fs-btn" id="fsBtn"><i class="fas fa-expand"></i> Toàn màn hình</button>
+</div>
+
+<script>
+/* =====================================================================
+   LOGIC DÙNG CHUNG — trạng thái đồng bộ giữa 2 cửa sổ (localStorage + BroadcastChannel)
+===================================================================== */
+const LED_STATE_KEY = 'led_display_state_v2';
+const LED_CHANNEL_NAME = 'led_display_channel_v2';
+
+// Thang cỡ chữ (đơn vị vw) — 11 mức, mở rộng hơn ở đầu to; giữa (mức 6) là mặc định
+const FONT_SCALES = {
+    zone1: [1.8, 2.1, 2.4, 2.7, 3.0, 3.35, 3.7, 4.1, 4.6, 5.2, 5.9],
+    zone2: [1.2, 1.4, 1.6, 1.8, 2.0, 2.25, 2.5, 2.8, 3.15, 3.55, 4.0],
+    zone3: [0.9, 1.0, 1.12, 1.25, 1.4, 1.55, 1.72, 1.9, 2.1, 2.35, 2.6]
+};
+const DEFAULT_FONT_INDEX = 5;
+
+function ledDefaultState(){
+    return { currentId:null, fontIndex:{ zone1:DEFAULT_FONT_INDEX, zone2:DEFAULT_FONT_INDEX, zone3:DEFAULT_FONT_INDEX } };
+}
+function ledLoadState(){
+    try{
+        const raw = localStorage.getItem(LED_STATE_KEY);
+        if (!raw) return ledDefaultState();
+        const s = JSON.parse(raw); const d = ledDefaultState();
+        return { currentId:s.currentId || null, fontIndex:{
+            zone1:(s.fontIndex && s.fontIndex.zone1!=null)?s.fontIndex.zone1:d.fontIndex.zone1,
+            zone2:(s.fontIndex && s.fontIndex.zone2!=null)?s.fontIndex.zone2:d.fontIndex.zone2,
+            zone3:(s.fontIndex && s.fontIndex.zone3!=null)?s.fontIndex.zone3:d.fontIndex.zone3
+        }};
+    }catch(e){ return ledDefaultState(); }
+}
+let _ledChannel = null;
+function ledGetChannel(){
+    if (!_ledChannel && 'BroadcastChannel' in window){ try{ _ledChannel = new BroadcastChannel(LED_CHANNEL_NAME); }catch(e){ _ledChannel=null; } }
+    return _ledChannel;
+}
+function ledSaveState(state){
+    localStorage.setItem(LED_STATE_KEY, JSON.stringify(state));
+    const ch = ledGetChannel(); if (ch){ try{ ch.postMessage({ type:'state', state }); }catch(e){} }
+}
+function ledOnStateChange(cb){
+    window.addEventListener('storage', (e)=>{ if (e.key === LED_STATE_KEY) cb(ledLoadState()); });
+    const ch = ledGetChannel(); if (ch) ch.onmessage = (e)=>{ if (e.data && e.data.type==='state') cb(e.data.state); };
+}
+function ledGetApprovedList(data){
+    return (data||[]).filter(i=>i.status==='approved' && i.thuTu!=='' && i.thuTu!=null)
+        .sort((a,b)=>(parseInt(a.thuTu)||0)-(parseInt(b.thuTu)||0));
+}
+function ledDeriveView(data, currentId){
+    const list = ledGetApprovedList(data);
+    let idx=-1; if (currentId) idx = list.findIndex(i=>String(i.id)===String(currentId));
+    const current = idx>=0 ? list[idx] : null;
+    const next = idx>=0 ? (list[idx+1]||null) : (list[0]||null);
+    return { list, current, next, idx };
+}
+function escapeHtmlLed(str){ if(!str) return ''; return String(str).replace(/[&<>]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]||m)); }
+function ledContentLines(text){ return (text||'').split('\n').map(l=>l.replace(/^•\s*/,'').trim()).filter(Boolean); }
+async function ledFetchData(webappUrl){
+    if (!webappUrl) return [];
+    try{
+        const res = await fetch(webappUrl + '?action=get&t=' + Date.now());
+        const json = await res.json();
+        if (json && typeof json === 'object'){
+            if (Array.isArray(json)) return json;
+            if (json.data && Array.isArray(json.data)) return json.data;
+        }
+    }catch(e){}
+    return null;
+}
+function weekdayVi(d){ return ['Chủ Nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'][d.getDay()]; }
+function pad2(n){ return n<10 ? '0'+n : ''+n; }
+
+const WEBAPP_URL = (typeof APP_CONFIG !== 'undefined') ? APP_CONFIG.WEBAPP_URL : '';
+let allData = [];
+let state = ledLoadState();
+
+/* =====================================================================
+   CHỌN CHẾ ĐỘ: ?led=1 → màn hình LED · mặc định → bảng điều khiển
+===================================================================== */
+const params = new URLSearchParams(location.search);
+const isLedMode = params.get('led') === '1';
+document.body.classList.add(isLedMode ? 'mode-led' : 'mode-control');
+document.title = isLedMode ? 'Màn hình LED — Hội nghị tiếp xúc cử tri' : 'Điều khiển LED — Hội nghị tiếp xúc cử tri';
+
+/* =====================================================================
+   ĐỒNG HỒ
+===================================================================== */
+function tickClock(){
+    const now = new Date();
+    const time = pad2(now.getHours())+':'+pad2(now.getMinutes())+':'+pad2(now.getSeconds());
+    const date = weekdayVi(now)+', '+pad2(now.getDate())+'/'+pad2(now.getMonth()+1)+'/'+now.getFullYear();
+    const hcT=document.getElementById('hcTime'), hcD=document.getElementById('hcDate');
+    const lcT=document.getElementById('lcTime'), lcD=document.getElementById('lcDate');
+    if (hcT){ hcT.textContent=time; hcD.textContent=date; }
+    if (lcT){ lcT.textContent=time; lcD.textContent=date; }
+}
+tickClock(); setInterval(tickClock, 1000);
+
+/* =====================================================================
+   MÀN HÌNH LED
+===================================================================== */
+if (isLedMode){
+    const startGate = document.getElementById('startGate');
+    document.getElementById('startFsBtn').addEventListener('click', ()=>{
+        document.documentElement.requestFullscreen?.().catch(()=>{});
+        startGate.classList.add('hide');
+    });
+
+    function fmtUnit(item){ return `<i class="fas fa-map-pin"></i> ${escapeHtmlLed(item.khuDanCu||'')}`; }
+
+    function renderZone1(view){
+        const speakerBox=document.getElementById('z1Speaker'), scrollBox=document.getElementById('z1Scroll'), fade=document.getElementById('z1Fade');
+        document.documentElement.style.setProperty('--z1fz', FONT_SCALES.zone1[state.fontIndex.zone1]+'vw');
+        if (!view.current){
+            speakerBox.style.display='none'; fade.style.display='none';
+            scrollBox.innerHTML = `<div class="z1-waiting"><div class="big"><i class="fas fa-hourglass-half"></i>&ensp;Đang chờ mời phát biểu…</div><div>Ban tổ chức sẽ mời ý kiến tiếp theo trong giây lát.</div></div>`;
+            scrollBox.style.fontSize=''; return;
+        }
+        speakerBox.style.display='flex';
+        document.getElementById('z1Name').textContent = view.current.hoTen || 'Không tên';
+        document.getElementById('z1Unit').innerHTML = fmtUnit(view.current);
+        const lines = ledContentLines(view.current.noiDungDuyet || view.current.noiDung || '');
+        scrollBox.style.fontSize='var(--z1fz)';
+        scrollBox.innerHTML = lines.length
+            ? lines.map(l=>`<div class="z1-line"><span class="bullet"><i class="fas fa-diamond"></i></span><span>${escapeHtmlLed(l)}</span></div>`).join('')
+            : '<div class="z1-line"><span></span><span style="color:var(--mist)">Không có nội dung chi tiết</span></div>';
+        scrollBox.scrollTop = 0;
+        requestAnimationFrame(()=>{ fade.style.display = scrollBox.scrollHeight > scrollBox.clientHeight+4 ? 'block':'none'; });
+    }
+    function renderZone2(view){
+        const box=document.getElementById('z2Text');
+        document.documentElement.style.setProperty('--z2fz', FONT_SCALES.zone2[state.fontIndex.zone2]+'vw');
+        box.style.fontSize='var(--z2fz)';
+        if (!view.next){ box.innerHTML = `<span class="z2-empty">${view.current?'Đây là ý kiến cuối cùng trong danh sách.':'Chưa có ý kiến nào trong danh sách chờ.'}</span>`; return; }
+        box.innerHTML = `Tiếp theo: Ông/Bà <b>${escapeHtmlLed(view.next.hoTen||'Không tên')}</b> — ${escapeHtmlLed(view.next.khuDanCu||'')} chuẩn bị.`;
+    }
+    let lastTrackKey='';
+    function renderZone3(view){
+        document.getElementById('z3Count').textContent = view.list.length;
+        document.documentElement.style.setProperty('--z3fz', FONT_SCALES.zone3[state.fontIndex.zone3]+'vw');
+        const track=document.getElementById('z3Track'); track.style.fontSize='var(--z3fz)';
+        if (!view.list.length){ track.style.animation='none'; track.style.transform='none'; track.innerHTML='<div class="z3-empty"><i class="fas fa-inbox"></i>&ensp;Chưa có ý kiến nào được duyệt</div>'; lastTrackKey=''; return; }
+        const rowHtml=(item)=>{
+            const isCur = view.current && String(item.id)===String(view.current.id);
+            return `<div class="z3-row${isCur?' is-current':''}"><div class="z3-badge">${escapeHtmlLed(item.thuTu)}</div><div class="z3-info"><div class="z3-name">${escapeHtmlLed(item.hoTen||'Không tên')}</div><div class="z3-unit">${fmtUnit(item)}</div></div></div>`;
+        };
+        const dividerHtml = `<div class="z3-divider"><i class="fas fa-diamond"></i><i class="fas fa-diamond"></i><i class="fas fa-diamond"></i></div>`;
+        const key = view.list.map(i=>i.id+(view.current?String(view.current.id):'')).join(',')+'|'+state.fontIndex.zone3;
+        if (key === lastTrackKey) return;
+        lastTrackKey = key;
+        const oneSet = view.list.map(rowHtml).join('') + dividerHtml;
+        track.style.animation='none'; track.style.transform='translateY(0)';
+        track.innerHTML = oneSet+oneSet;
+        requestAnimationFrame(()=>{
+            const halfHeight = track.scrollHeight/2;
+            const viewportHeight = track.parentElement.clientHeight;
+            if (halfHeight <= viewportHeight+4){ track.style.animation='none'; return; }
+            const pxPerSecond=26; const duration=Math.max(halfHeight/pxPerSecond,8);
+            track.style.setProperty('--scrollDist','-'+halfHeight+'px');
+            track.style.animation = `z3scroll ${duration}s linear infinite`;
+        });
+    }
+    const styleTag=document.createElement('style'); document.head.appendChild(styleTag);
+    styleTag.textContent = `@keyframes z3scroll { from{transform:translateY(0);} to{transform:translateY(var(--scrollDist,0));} }`;
+
+    function render(){ const view = ledDeriveView(allData, state.currentId); renderZone1(view); renderZone2(view); renderZone3(view); }
+    async function refreshData(){ const fresh = await ledFetchData(WEBAPP_URL); if (fresh!==null){ allData=fresh; render(); } }
+    ledOnStateChange((s)=>{ state=s; lastTrackKey=''; render(); });
+    refreshData(); render(); setInterval(refreshData, 6000);
+
+    (function z1AutoScroll(){
+        let dir=1, paused=0;
+        function step(){
+            const box=document.getElementById('z1Scroll'); const max=box.scrollHeight-box.clientHeight;
+            if (max>6){ if (paused>0) paused--; else { box.scrollTop += dir*0.6; if (box.scrollTop>=max-1){dir=-1;paused=70;} else if (box.scrollTop<=1){dir=1;paused=70;} } }
+            requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    })();
+
+    const fsBtn=document.getElementById('fsBtn');
+    fsBtn.addEventListener('click', ()=>{ if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
+    let hideTimer;
+    document.addEventListener('mousemove', ()=>{ document.body.classList.add('show-fs'); clearTimeout(hideTimer); hideTimer=setTimeout(()=>document.body.classList.remove('show-fs'),2200); });
+}
+
+/* =====================================================================
+   BẢNG ĐIỀU KHIỂN
+===================================================================== */
+if (!isLedMode){
+    function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+    function setStatus(ok){ document.getElementById('statusDot').classList.toggle('err', !ok); document.getElementById('statusText').textContent = ok?'Đã kết nối dữ liệu':'Mất kết nối — đang thử lại…'; }
+
+    document.getElementById('openLedBtn').addEventListener('click', ()=>{
+        window.open(location.pathname + '?led=1', '_blank');
+    });
+
+    function renderList(view){
+        const box=document.getElementById('listBox');
+        if (!view.list.length){ box.innerHTML = `<div class="empty-state"><i class="fas fa-inbox"></i>Chưa có ý kiến nào được duyệt.<br>Vào trang Quản trị để duyệt ý kiến trước.</div>`; return; }
+        box.innerHTML = view.list.map(item=>{
+            const isCur = view.current && String(item.id)===String(view.current.id);
+            return `<div class="row-item${isCur?' is-current':''}" data-id="${item.id}">
+                <div class="row-badge">${escapeHtmlLed(item.thuTu)}</div>
+                <div class="row-main"><div class="row-name">${escapeHtmlLed(item.hoTen||'Không tên')}</div><div class="row-unit"><i class="fas fa-map-pin"></i> ${escapeHtmlLed(item.khuDanCu||'')}</div></div>
+                ${isCur?'<span class="row-tag">ĐANG PHÁT BIỂU</span>':''}
+            </div>`;
+        }).join('');
+        box.querySelectorAll('.row-item').forEach(el=>{
+            el.addEventListener('click', ()=>{ state.currentId = el.dataset.id; ledSaveState(state); render(); toast('Đã chọn ý kiến đang phát biểu'); });
+        });
+    }
+    function renderNextBtn(view){
+        const btn=document.getElementById('nextBtn'), sub=document.getElementById('nextBtnSub');
+        if (!view.list.length){ btn.disabled=true; sub.textContent='Chưa có ý kiến nào được duyệt'; return; }
+        if (!view.next){ btn.disabled=true; sub.textContent = view.current ? 'Đây là ý kiến cuối cùng' : 'Không có ý kiến nào trong danh sách'; return; }
+        btn.disabled=false; sub.textContent = `${view.next.hoTen||'Không tên'} — ${view.next.khuDanCu||''}`;
+    }
+    document.getElementById('nextBtn').addEventListener('click', ()=>{
+        const view = ledDeriveView(allData, state.currentId);
+        if (!view.next) return;
+        state.currentId = view.next.id; ledSaveState(state); render(); toast('Đã chuyển sang ý kiến tiếp theo');
+    });
+
+    function renderPreview(view){
+        const frame=document.getElementById('previewFrame');
+        const fz1=FONT_SCALES.zone1[state.fontIndex.zone1]*0.62, fz2=FONT_SCALES.zone2[state.fontIndex.zone2]*0.62, fz3=FONT_SCALES.zone3[state.fontIndex.zone3]*0.62;
+        let zone1Html;
+        if (!view.current){
+            zone1Html = `<div class="pv-eyebrow"><span class="pv-dot"></span>ĐANG PHÁT BIỂU</div><div class="pv-waiting" style="font-size:${fz2}cqw">Đang chờ mời phát biểu…</div>`;
+        } else {
+            const lines = ledContentLines(view.current.noiDungDuyet || view.current.noiDung || '').slice(0,6);
+            zone1Html = `<div class="pv-eyebrow"><span class="pv-dot"></span>ĐANG PHÁT BIỂU</div>
+                <div class="pv-name" style="font-size:${fz1}cqw">${escapeHtmlLed(view.current.hoTen||'')}</div>
+                <div class="pv-unit" style="font-size:${fz2*0.75}cqw"><i class="fas fa-map-pin"></i> ${escapeHtmlLed(view.current.khuDanCu||'')}</div>
+                <div class="pv-lines" style="font-size:${fz2*0.72}cqw">${lines.map(l=>`<div class="pv-line"><span class="b">◆</span><span>${escapeHtmlLed(l)}</span></div>`).join('')}</div>`;
+        }
+        let zone2Html;
+        if (!view.next){
+            zone2Html = `<i class="fas fa-arrow-right"></i><span style="font-size:${fz2}cqw;color:rgba(247,245,239,0.55)">${view.current?'Ý kiến cuối cùng':'Chưa có danh sách'}</span>`;
+        } else {
+            zone2Html = `<i class="fas fa-arrow-right"></i><span style="font-size:${fz2}cqw">Tiếp theo: <b>${escapeHtmlLed(view.next.hoTen||'')}</b> — ${escapeHtmlLed(view.next.khuDanCu||'')}</span>`;
+        }
+        let zone3Html = `<div class="pv-z3head"><span>Đã duyệt</span><span>${view.list.length}</span></div>`;
+        if (!view.list.length){ zone3Html += `<div style="color:rgba(247,245,239,0.5);font-size:${fz3}cqw">Chưa có dữ liệu</div>`; }
+        else {
+            zone3Html += view.list.slice(0,9).map(item=>{
+                const isCur = view.current && String(item.id)===String(view.current.id);
+                return `<div class="pv-z3row${isCur?' cur':''}" style="font-size:${fz3}cqw"><div class="pv-z3badge">${escapeHtmlLed(item.thuTu)}</div><div><div class="pv-z3name">${escapeHtmlLed(item.hoTen||'')}</div><div class="pv-z3unit">${escapeHtmlLed(item.khuDanCu||'')}</div></div></div>`;
+            }).join('');
+        }
+        frame.innerHTML = `<div class="pv-zone1">${zone1Html}</div><div class="pv-zone2">${zone2Html}</div><div class="pv-zone3">${zone3Html}</div>`;
+    }
+
+    const sliderIds = { zone1:'fz1', zone2:'fz2', zone3:'fz3' };
+    function syncSlidersFromState(){
+        Object.keys(sliderIds).forEach(zone=>{
+            document.getElementById(sliderIds[zone]).value = state.fontIndex[zone];
+            document.getElementById(sliderIds[zone]+'val').textContent = (state.fontIndex[zone]+1)+' / 11';
+        });
+    }
+    Object.keys(sliderIds).forEach(zone=>{
+        document.getElementById(sliderIds[zone]).addEventListener('input', (e)=>{
+            state.fontIndex[zone] = parseInt(e.target.value);
+            document.getElementById(sliderIds[zone]+'val').textContent = (state.fontIndex[zone]+1)+' / 11';
+            ledSaveState(state); render();
+        });
+    });
+    document.getElementById('resetFontBtn').addEventListener('click', ()=>{
+        const d=ledDefaultState(); state.fontIndex=d.fontIndex; ledSaveState(state); syncSlidersFromState(); render(); toast('Đã khôi phục cỡ chữ mặc định');
+    });
+
+    function render(){ const view = ledDeriveView(allData, state.currentId); renderList(view); renderNextBtn(view); renderPreview(view); }
+    async function refreshData(){ const fresh = await ledFetchData(WEBAPP_URL); if (fresh!==null){ allData=fresh; setStatus(true); render(); } else setStatus(false); }
+    ledOnStateChange((s)=>{ state=s; syncSlidersFromState(); render(); });
+
+    syncSlidersFromState(); refreshData(); render(); setInterval(refreshData, 6000);
+}
+</script>
+</body>
+</html>
