@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Điều khiển màn hình LED</title>
+<script src="config.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root{
+    --navy-950:#071A3D; --navy-900:#0E2C6B; --navy-800:#154089;
+    --gold:#E7BE6B; --gold-deep:#B98A34; --gold-bg:#FBF3E1;
+    --crimson:#D14134;
+    --ink:#F7F5EF; --mist:rgba(247,245,239,0.62);
+    --bg:#F2EFE6; --panel:#FFFFFF; --text:#1B2333; --text2:#6B7484; --border:#E4DECB;
+    --radius-lg:18px; --radius-md:12px; --shadow:0 10px 30px rgba(20,20,10,0.08);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{font-family:'Be Vietnam Pro', sans-serif; color:var(--text); background:var(--bg); padding-bottom:env(safe-area-inset-bottom);}
+
+/* ===== HEADER ===== */
+header.ctl-header{
+    background:linear-gradient(120deg, var(--navy-950), var(--navy-900) 55%, var(--navy-800));
+    padding:14px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    box-shadow:0 4px 18px rgba(0,0,0,0.18);
+    position:sticky; top:0; z-index:100;
+}
+.head-title{ flex:1; min-width:140px; }
+.head-title h1{ color:#F7F5EF; font-size:1rem; font-weight:800; display:flex; align-items:center; gap:8px; }
+.head-title p{ color:rgba(247,245,239,0.5); font-size:.7rem; font-weight:500; margin-top:1px; }
+
+.status-pill{
+    display:flex; align-items:center; gap:7px;
+    background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14);
+    border-radius:30px; padding:5px 12px; font-size:.7rem; font-weight:600; color:#F7F5EF;
+}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#8BC34A;}
+.status-dot.err{background:var(--crimson);}
+
+.btn-open-led{
+    display:flex; align-items:center; gap:6px;
+    background:linear-gradient(135deg,#E7BE6B,#B98A34); color:#231705;
+    border:none; border-radius:30px; padding:7px 14px; font-weight:700; font-size:.75rem;
+    cursor:pointer; font-family:inherit;
+}
+
+/* ===== WRAP ===== */
+.wrap{ max-width:1200px; margin:0 auto; padding:16px; }
+
+/* ===== PANEL ===== */
+.panel{ background:var(--panel); border-radius:var(--radius-lg); box-shadow:var(--shadow); border:1px solid var(--border); padding:16px 16px 18px; margin-bottom:16px; }
+.panel h2{ font-size:.8rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--gold-deep); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+
+/* ===== NÚT CHỌN ===== */
+.next-btn{
+    width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:linear-gradient(135deg, var(--navy-900), var(--navy-950)); color:#F7F5EF; border:none;
+    border-radius:var(--radius-md); padding:14px 16px; cursor:pointer; font-family:inherit; margin-bottom:14px;
+    box-shadow:0 6px 16px rgba(10,23,48,0.25);
+}
+.next-btn:active{ transform:scale(0.99); }
+.next-btn:disabled{ opacity:.45; cursor:not-allowed; }
+.next-btn .nb-left{ display:flex; align-items:center; gap:12px; text-align:left; }
+.next-btn .nb-icon{ width:36px; height:36px; border-radius:50%; border:1.5px solid #E7BE6B; color:#E7BE6B; display:flex; align-items:center; justify-content:center; font-size:1rem; flex:none; }
+.next-btn .nb-title{ font-weight:800; font-size:.85rem; }
+.next-btn .nb-sub{ font-size:.7rem; color:rgba(247,245,239,0.6); margin-top:2px; }
+
+/* ===== DANH SÁCH ===== */
+.list-scroll{ max-height:50vh; overflow-y:auto; padding-right:2px; -webkit-overflow-scrolling:touch; }
+.list-scroll::-webkit-scrollbar{ width:3px; }
+.list-scroll::-webkit-scrollbar-track{ background:transparent; }
+.list-scroll::-webkit-scrollbar-thumb{ background:var(--border); border-radius:10px; }
+
+.row-item{ display:flex; align-items:center; gap:12px; padding:11px 10px; border-radius:var(--radius-md); border:1.5px solid var(--border); margin-bottom:8px; cursor:pointer; transition:.15s; }
+.row-item:active{ transform:scale(0.98); }
+.row-item:hover{ border-color:#D9C99A; background:#FBF8F1; }
+.row-item.is-current{ border-color:var(--gold); background:var(--gold-bg); }
+.row-badge{ flex:none; width:32px; height:32px; border-radius:50%; border:1.5px solid var(--gold-deep); color:var(--gold-deep); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:.8rem; }
+.row-item.is-current .row-badge{ background:var(--gold-deep); color:#fff; }
+.row-main{ flex:1; min-width:0; }
+.row-name{ font-weight:700; font-size:.85rem; }
+.row-unit{ font-size:.7rem; color:var(--text2); margin-top:1px; }
+.row-tag{ flex:none; font-size:.62rem; font-weight:700; padding:3px 10px; border-radius:20px; background:var(--gold-deep); color:#fff; }
+.empty-state{ text-align:center; color:var(--text2); padding:24px 10px; font-size:.8rem; }
+.empty-state i{ font-size:1.4rem; color:var(--border); display:block; margin-bottom:6px; }
+
+/* ===== CỠ CHỮ ===== */
+.font-row{ margin-bottom:14px; }
+.font-row:last-child{ margin-bottom:0; }
+.font-row-label{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.font-row-label span.name{ font-size:.78rem; font-weight:700; }
+.font-row-label span.val{ font-size:.68rem; color:var(--text2); font-weight:600; }
+.slider-track{ display:flex; align-items:center; gap:10px; }
+.slider-track i{ color:var(--text2); }
+.slider-track i.small{ font-size:.65rem; }
+.slider-track i.big{ font-size:1rem; }
+input[type=range]{ flex:1; -webkit-appearance:none; height:5px; border-radius:5px; background:linear-gradient(90deg, var(--border), var(--gold-deep)); outline:none; }
+input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:#fff; border:3px solid var(--gold-deep); cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+
+.btn-reset{ margin-top:12px; width:100%; padding:9px; border-radius:30px; border:1.5px solid var(--border); background:transparent; color:var(--text2); font-weight:700; font-size:.72rem; cursor:pointer; font-family:inherit; }
+.btn-reset:active{ transform:scale(0.98); }
+
+/* ===== TOAST ===== */
+.toast{ position:fixed; left:50%; bottom:20px; transform:translateX(-50%) translateY(20px); background:var(--navy-950); color:#F7F5EF; padding:10px 18px; border-radius:30px; font-size:.78rem; font-weight:600; opacity:0; transition:.25s; pointer-events:none; z-index:200; box-shadow:0 8px 24px rgba(0,0,0,0.25); }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 480px) {
+    header.ctl-header{ padding:10px 12px; gap:8px; }
+    .head-title h1{ font-size:.85rem; }
+    .btn-open-led{ font-size:.65rem; padding:5px 10px; }
+    .status-pill{ font-size:.6rem; padding:4px 10px; }
+    .panel{ padding:12px; }
+    .next-btn{ padding:12px 14px; }
+    .next-btn .nb-title{ font-size:.78rem; }
+    .row-item{ padding:9px 8px; gap:8px; }
+    .row-badge{ width:28px; height:28px; font-size:.7rem; }
+    .row-name{ font-size:.78rem; }
+    .wrap{ padding:10px; }
+}
+
+@media (max-width: 380px) {
+    .head-title h1{ font-size:.7rem; }
+    .btn-open-led{ font-size:.55rem; padding:4px 8px; }
+    .status-pill{ font-size:.5rem; padding:3px 8px; }
+    .status-dot{ width:6px; height:6px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header class="ctl-header">
+    <div class="head-title">
+        <h1><i class="fas fa-sliders-h"></i>&ensp;Điều khiển LED</h1>
+        <p>Hội nghị tiếp xúc cử tri</p>
+    </div>
+    <div class="status-pill">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Đang kết nối…</span>
+    </div>
+    <button class="btn-open-led" id="openLedBtn"><i class="fas fa-external-link-alt"></i> Mở LED</button>
+</header>
+
+<!-- ===== CONTENT ===== -->
+<div class="wrap">
+    <!-- Panel: Chọn ý kiến -->
+    <div class="panel">
+        <h2><i class="fas fa-microphone-lines"></i> Chọn ý kiến phát biểu</h2>
+        <button class="next-btn" id="nextBtn" disabled>
+            <div class="nb-left">
+                <div class="nb-icon" id="nextBtnIcon"><i class="fas fa-play"></i></div>
+                <div>
+                    <div class="nb-title" id="nextBtnTitle">Bắt đầu trình chiếu</div>
+                    <div class="nb-sub" id="nextBtnSub">Đang tải danh sách…</div>
+                </div>
+            </div>
+            <i class="fas fa-chevron-right" style="color:#E7BE6B"></i>
+        </button>
+        <button class="btn-reset" id="backToGuideBtn" style="margin-bottom:14px;"><i class="fas fa-rotate-left"></i>&ensp;Quay lại màn hướng dẫn (chưa bắt đầu)</button>
+        <div id="listBox" class="list-scroll">
+            <div class="empty-state"><i class="fas fa-spinner fa-pulse"></i>Đang tải danh sách ý kiến đã duyệt…</div>
+        </div>
+    </div>
+
+    <!-- Panel: Cỡ chữ -->
+    <div class="panel">
+        <h2><i class="fas fa-text-height"></i> Cỡ chữ hiển thị</h2>
+        <div class="font-row">
+            <div class="font-row-label">
+                <span class="name">Vùng 1 — Đang phát biểu</span>
+                <span class="val" id="fz1val"></span>
+            </div>
+            <div class="slider-track">
+                <i class="fas fa-font small"></i>
+                <input type="range" min="0" max="10" step="1" id="fz1">
+                <i class="fas fa-font big"></i>
+            </div>
+        </div>
+        <div class="font-row">
+            <div class="font-row-label">
+                <span class="name">Vùng 2 — Tiếp theo</span>
+                <span class="val" id="fz2val"></span>
+            </div>
+            <div class="slider-track">
+                <i class="fas fa-font small"></i>
+                <input type="range" min="0" max="10" step="1" id="fz2">
+                <i class="fas fa-font big"></i>
+            </div>
+        </div>
+        <div class="font-row">
+            <div class="font-row-label">
+                <span class="name">Vùng 3 — Danh sách đã duyệt</span>
+                <span class="val" id="fz3val"></span>
+            </div>
+            <div class="slider-track">
+                <i class="fas fa-font small"></i>
+                <input type="range" min="0" max="10" step="1" id="fz3">
+                <i class="fas fa-font big"></i>
+            </div>
+        </div>
+        <button class="btn-reset" id="resetFontBtn"><i class="fas fa-rotate-left"></i>&ensp;Khôi phục cỡ chữ mặc định</button>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   BẢNG ĐIỀU KHIỂN TỪ XA
+   Ghi state vào localStorage để hienthi.html đọc được
+===================================================================== */
+const LED_STATE_KEY = 'led_display_state_v2';
+const LED_CHANNEL_NAME = 'led_display_channel_v2';
+const WEBAPP_URL = (typeof APP_CONFIG !== 'undefined') ? APP_CONFIG.WEBAPP_URL : '';
+
+// Thang cỡ chữ
+const FONT_SCALES = {
+    zone1: [1.8, 2.1, 2.4, 2.7, 3.0, 3.35, 3.7, 4.1, 4.6, 5.2, 5.9],
+    zone2: [1.2, 1.4, 1.6, 1.8, 2.0, 2.25, 2.5, 2.8, 3.15, 3.55, 4.0],
+    zone3: [0.9, 1.0, 1.12, 1.25, 1.4, 1.55, 1.72, 1.9, 2.1, 2.35, 2.6]
+};
+const DEFAULT_FONT_INDEX = 5;
+
+let allData = [];
+let currentState = {
+    started: false,
+    currentId: null,
+    fontIndex: { zone1: DEFAULT_FONT_INDEX, zone2: DEFAULT_FONT_INDEX, zone3: DEFAULT_FONT_INDEX }
+};
+
+// ===================== UTILITY =====================
+function escapeHtml(str){ if(!str) return ''; return String(str).replace(/[&<>]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]||m)); }
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); }
+
+function ledGetApprovedList(data){
+    return (data||[]).filter(i=>i.status==='approved' && i.thuTu!=='' && i.thuTu!=null)
+        .sort((a,b)=>(parseInt(a.thuTu)||0)-(parseInt(b.thuTu)||0));
+}
+
+function ledDeriveView(data, currentId){
+    const list = ledGetApprovedList(data);
+    let idx=-1; if (currentId) idx = list.findIndex(i=>String(i.id)===String(currentId));
+    const current = idx>=0 ? list[idx] : null;
+    const next = idx>=0 ? (list[idx+1]||null) : (list[0]||null);
+    return { list, current, next, idx };
+}
+
+// ===================== LƯU STATE =====================
+function saveState(){
+    localStorage.setItem(LED_STATE_KEY, JSON.stringify(currentState));
+    // Broadcast cho cửa sổ LED (nếu mở cùng thiết bị/trình duyệt)
+    if('BroadcastChannel' in window){
+        try{
+            const ch = new BroadcastChannel(LED_CHANNEL_NAME);
+            ch.postMessage({ type:'state', state:currentState });
+        }catch(e){}
+    }
+    // Đồng bộ lên server để màn hình LED ở thiết bị/máy khác cũng nhận được
+    if(WEBAPP_URL){
+        fetch(WEBAPP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action:'save_state', state: currentState })
+        }).catch(()=>{});
+    }
+}
+
+// ===================== RENDER DANH SÁCH =====================
+function renderList(){
+    const view = ledDeriveView(allData, currentState.currentId);
+    const box = document.getElementById('listBox');
+    const btn = document.getElementById('nextBtn');
+    const sub = document.getElementById('nextBtnSub');
+    const title = document.getElementById('nextBtnTitle');
+    const icon = document.getElementById('nextBtnIcon');
+    const backBtn = document.getElementById('backToGuideBtn');
+
+    // Cập nhật nút Bắt đầu / Ý kiến tiếp theo
+    if(!currentState.started){
+        icon.innerHTML = '<i class="fas fa-play"></i>';
+        title.textContent = 'Bắt đầu trình chiếu';
+        if(!view.list.length){
+            btn.disabled = true;
+            sub.textContent = 'Chưa có ý kiến nào được duyệt';
+        } else {
+            btn.disabled = false;
+            sub.textContent = `Vào Ý kiến 1: ${view.list[0].hoTen||'Không tên'} — ${view.list[0].khuDanCu||''}`;
+        }
+        backBtn.style.display = 'none';
+    } else {
+        icon.innerHTML = '<i class="fas fa-forward-step"></i>';
+        title.textContent = 'Ý kiến tiếp theo';
+        if(!view.list.length){
+            btn.disabled = true;
+            sub.textContent = 'Chưa có ý kiến nào được duyệt';
+        } else if(!view.next){
+            btn.disabled = true;
+            sub.textContent = view.current ? 'Đây là ý kiến cuối cùng' : 'Không có ý kiến trong danh sách';
+        } else {
+            btn.disabled = false;
+            sub.textContent = `${view.next.hoTen||'Không tên'} — ${view.next.khuDanCu||''}`;
+        }
+        backBtn.style.display = 'block';
+    }
+
+    // Render danh sách
+    if(!view.list.length){
+        box.innerHTML = `<div class="empty-state"><i class="fas fa-inbox"></i>Chưa có ý kiến nào được duyệt.<br>Vào trang Quản trị để duyệt ý kiến trước.</div>`;
+        return;
+    }
+
+    box.innerHTML = view.list.map(item=>{
+        const isCur = view.current && String(item.id)===String(view.current.id);
+        return `<div class="row-item${isCur?' is-current':''}" data-id="${item.id}">
+            <div class="row-badge">${escapeHtml(item.thuTu)}</div>
+            <div class="row-main">
+                <div class="row-name">${escapeHtml(item.hoTen||'Không tên')}</div>
+                <div class="row-unit"><i class="fas fa-map-pin"></i> ${escapeHtml(item.khuDanCu||'')}</div>
+            </div>
+            ${isCur?'<span class="row-tag">ĐANG PHÁT BIỂU</span>':''}
+        </div>`;
+    }).join('');
+
+    // Gán sự kiện click cho từng item
+    box.querySelectorAll('.row-item').forEach(el=>{
+        el.addEventListener('click', ()=>{
+            const id = el.dataset.id;
+            if(id && (id !== currentState.currentId || !currentState.started)){
+                currentState.currentId = id;
+                currentState.started = true;
+                saveState();
+                renderList();
+                toast('Đã chọn: ' + (allData.find(i=>String(i.id)===String(id))?.hoTen||''));
+            }
+        });
+    });
+}
+
+// ===================== XỬ LÝ NÚT BẮT ĐẦU / Ý KIẾN TIẾP THEO =====================
+document.getElementById('nextBtn').addEventListener('click', ()=>{
+    const view = ledDeriveView(allData, currentState.currentId);
+    if(!currentState.started){
+        // Bấm lần đầu: bắt đầu trình chiếu, chuyển LED sang Ý kiến 1
+        if(!view.list.length) return;
+        currentState.started = true;
+        currentState.currentId = view.list[0].id;
+        saveState();
+        renderList();
+        toast('Bắt đầu — Ý kiến 1: ' + (view.list[0].hoTen||''));
+        return;
+    }
+    if(!view.next) return;
+    currentState.currentId = view.next.id;
+    saveState();
+    renderList();
+    toast('Đã chuyển sang ý kiến tiếp theo');
+});
+
+document.getElementById('backToGuideBtn').addEventListener('click', ()=>{
+    currentState.started = false;
+    currentState.currentId = null;
+    saveState();
+    renderList();
+    toast('Đã quay lại màn hình hướng dẫn');
+});
+
+// ===================== CỠ CHỮ =====================
+const sliderIds = { zone1:'fz1', zone2:'fz2', zone3:'fz3' };
+
+function syncSlidersFromState(){
+    Object.keys(sliderIds).forEach(zone=>{
+        const el = document.getElementById(sliderIds[zone]);
+        if(el){
+            el.value = currentState.fontIndex[zone];
+            document.getElementById(sliderIds[zone]+'val').textContent = (currentState.fontIndex[zone]+1)+' / 11';
+        }
+    });
+}
+
+Object.keys(sliderIds).forEach(zone=>{
+    const el = document.getElementById(sliderIds[zone]);
+    if(!el) return;
+    el.addEventListener('input', (e)=>{
+        currentState.fontIndex[zone] = parseInt(e.target.value);
+        document.getElementById(sliderIds[zone]+'val').textContent = (currentState.fontIndex[zone]+1)+' / 11';
+        saveState();
+    });
+});
+
+document.getElementById('resetFontBtn').addEventListener('click', ()=>{
+    const d = { zone1: DEFAULT_FONT_INDEX, zone2: DEFAULT_FONT_INDEX, zone3: DEFAULT_FONT_INDEX };
+    currentState.fontIndex = d;
+    syncSlidersFromState();
+    saveState();
+    toast('Đã khôi phục cỡ chữ mặc định');
+});
+
+// ===================== LẤY DỮ LIỆU =====================
+function setStatus(ok){
+    const dot = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    if(!dot || !text) return;
+    dot.classList.toggle('err', !ok);
+    text.textContent = ok ? 'Đã kết nối' : 'Mất kết nối';
+}
+
+async function fetchData(){
+    if(!WEBAPP_URL) return null;
+    try{
+        const res = await fetch(WEBAPP_URL + '?action=get&t=' + Date.now());
+        const json = await res.json();
+        if(json && typeof json === 'object'){
+            if(Array.isArray(json)) return { data: json, ledState: null };
+            return { data: Array.isArray(json.data) ? json.data : [], ledState: json.ledState || null };
+        }
+        return null;
+    }catch(e){ return null; }
+}
+
+function applyServerLedState(ledState){
+    if(!ledState || typeof ledState !== 'object') return;
+    currentState.started = !!ledState.started;
+    currentState.currentId = ledState.currentId || null;
+    if(ledState.fontIndex){
+        currentState.fontIndex.zone1 = ledState.fontIndex.zone1 ?? DEFAULT_FONT_INDEX;
+        currentState.fontIndex.zone2 = ledState.fontIndex.zone2 ?? DEFAULT_FONT_INDEX;
+        currentState.fontIndex.zone3 = ledState.fontIndex.zone3 ?? DEFAULT_FONT_INDEX;
+    }
+    syncSlidersFromState();
+}
+
+async function refreshAndRender(){
+    const fresh = await fetchData();
+    if(fresh !== null){
+        allData = fresh.data;
+        // Đồng bộ trạng thái (started/currentId) từ server — để phản ánh đúng
+        // nếu có người khác đang điều khiển trên thiết bị khác.
+        applyServerLedState(fresh.ledState);
+        setStatus(true);
+        renderList();
+    } else {
+        setStatus(false);
+    }
+}
+
+// ===================== MỞ MÀN HÌNH LED =====================
+document.getElementById('openLedBtn').addEventListener('click', ()=>{
+    // Mở cửa sổ mới với hienthi.html
+    window.open('hienthi.html', '_blank');
+});
+
+// ===================== KHỞI ĐỘNG =====================
+// Đọc state từ localStorage (tức thời nếu cùng thiết bị/trình duyệt)
+try{
+    const saved = localStorage.getItem(LED_STATE_KEY);
+    if(saved){
+        const parsed = JSON.parse(saved);
+        applyServerLedState(parsed);
+    }
+}catch(e){}
+
+syncSlidersFromState();
+refreshAndRender();
+setInterval(refreshAndRender, 3000);
+
+// Khi tab được focus lại, refresh
+document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden) refreshAndRender();
+});
+</script>
+</body>
+</html>
